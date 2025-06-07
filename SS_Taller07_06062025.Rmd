@@ -1,0 +1,170 @@
+---
+title: "Ajuste de Distribuciones de Probabilidad"
+author: "Samuel Palomino"
+output: html_notebook
+---
+
+```{r}
+library(fitdistrplus)
+library(MASS)
+library(moments)
+
+# Leer el archivo de texto
+df_avg_speed = read.table("C:/Users/S&N/Downloads/bus_offpeak_1.txt")
+
+# Mostrar los primeros registros
+head(df_avg_speed)
+```
+
+Convertir los datos en un vector
+
+```{r}
+# Convertir el dataframe a un vector x
+x <- df_avg_speed$V1
+
+# Explorar algunas estadísticas de los datos
+summary(x)
+```
+
+Grafiquemos los datos en un histograma. El objetivo es analizar la forma de la 
+curva y tener candidatas de comparación frente a otras distribuciones de 
+probabilidad.
+
+```{r}
+# Graficar un histograma y la función de probabilidad acumulada
+plotdist(x, histo = TRUE, demp = TRUE)
+```
+A priori, podemos presentar como candidatas distribuciones asímetricas, con 
+gráficas con una concentración en la parte izquierda. Tenemos distribuciones 
+tales como la Weibull, Gamma o Lognormal.
+
+Ejecutemos el comando para realizar un gráfico de Cullen-Frey, para ver
+más información sobre su asimetría y curtosis, teniendo en cuenta la 
+incertidumbre. En la gráfica también podremos ver 1000 muestreos de los datos a
+prueba.
+
+```{r}
+# Ejecutar un gráfico Cullen-Frey
+descdist(x, boot = 1000)
+```
+Gracias a la gráfica, podemos ver que los datos sí parecen distribuirse de una
+misma manera, viendo esto, las distribuciones que más parecen aproximarse son
+la distribución Gamma, Weibull, y un poco más lejos de los puntos de muestra la
+lognormal, por lo que esta última la descartaremos.
+
+Ajustemos nuestros datos a ciertas distribuciones de probabilidad similares.
+Hemos elegido dos distribuciones para continuar, la Weibull y la Gamma.
+
+```{r}
+# Ajuste Weibull
+ajuste_weibull <- suppressWarnings(fitdist(x, "weibull"))
+
+# Ajuste Gamma
+ajuste_gamma <- suppressWarnings(fitdist(x, "gamma"))
+
+# Imprimir el resumen de los ajustes
+summary(ajuste_weibull)
+summary(ajuste_gamma)
+```
+Gracias al ajuste, obtenemos los datos de los parámetros que aproximan las 
+distribuciones teóricas frente a la distribución de nuetros datos de prueba.
+
+Hemos obtenido valores para la log-verosimilitud, AIC, BIC y la matriz de
+correlación, comparando los resultados para ambas distribuciones, evidenciamos
+que la distribución Gamma, tiene valores mejores para log-verosimilitud, AIC y 
+BIC. 
+
+- Gamma tiene un valor menos negativo (-86617.51) que la Weibull (-90515.89)
+- Gamma tiene un valor menor de AIC (173239) que la Weibull (181035.8)
+- Gamma tiene un valor menor de BIC (173255.8) que la Weibull (181052.6)
+
+Grafiquemos la información suministrada por los ajustes para verlo mejor
+
+```{r}
+# Graficar los ajustes
+plot(ajuste_weibull)
+plot(ajuste_gamma)
+```
+
+Grafiquemos ambos ajustes junto a nuestros datos
+
+```{r}
+# QQPlot
+qqcomp(list(ajuste_weibull, ajuste_gamma),
+       legendtext = c("Weibull", "Gamma"))
+
+# PPPlot
+ppcomp(list(ajuste_weibull, ajuste_gamma),
+       legendtext = c("Weibull", "Gamma"))
+
+# Comparación de CDF
+cdfcomp(list(ajuste_weibull, ajuste_gamma),
+        legendtext = c("Weibull", "Gamma"))
+
+# Comparación de Densidad
+denscomp(list(ajuste_weibull, ajuste_gamma),
+         legendtext = c("Weibull", "Gamma"))
+```
+Somos conscientes de que no hay mucha diferencia entre ambos ajustes. Asimismo,
+notamos la disparidad de estos en las gráficas q-q y p-p en los extremos. No 
+tenemos información muy concluyente por ahora. Procedamos con una prueba más
+contundente para estos ajustes.
+
+Evaluemos el ajuste de los datos, a las distribuciones Weibull y Gamma, 
+calculando las estadísticas de bondad de ajuste de distintas pruebas.
+
+```{r}
+# Comparación de bondad de ajuste (AIC, BIC, etc.)
+gofstat(list(ajuste_weibull, ajuste_gamma))
+```
+
+Observamos que la distribución Gamma es el modelo que minimiza los criterios 
+de información, pues tiene estadísticos menores en todas las pruebas en
+comparación a la distribución Weibull, además de lo ya mencionado, mejores 
+valores de AIC y BIC. 
+
+Evidenciamos que tiene un menor estadístico en la prueba de Kolmogorov-Smirnov. 
+Por lo que plateemos nuestras hipótesis para evaluarlo mejor:
+
+Hipótesis:
+
+H0 (nula): Los datos siguen la distribución Gamma.
+H1 (alternativa): Los datos no siguen esa distribución.
+
+```{r}
+# Ejecutar un test de Kolmogorov-Smirnov
+ks_result <- suppressWarnings(ks.test(x, "pgamma", shape = ajuste_gamma$estimate["shape"],
+                             rate = ajuste_gamma$estimate["rate"]))
+ks_result
+```
+Podemos observar un valor-p extremadamente bajo, por lo que podemos pensar que 
+está sesgado. No debería tomarse como concluyente en este contexto porque los 
+parámetros de la distribución Gamma que hemos probado fueron estimados a partir 
+de los mismos datos que se están evaluando. Por lo tanto, y dado a este valor-p,
+es muy probable que los datos no sigan esta distribución.
+
+Viendo esto, también podemos decir que tampoco siguen la distribución Weibull, 
+evidentemente más dispar frente a nuestros datos, y con un estadístico de prueba
+en la Kolmogorov-Smirnov mayor.
+
+Conclusión:
+
+A pesar de haber ajustado múltiples distribuciones de probabilidad,
+incluyendo Weibull y Gamma, no se encontró una que represente de forma
+completamente satisfactoria los datos. La distribución
+Gamma presentó el mejor desempeño relativo a sus candidatas competidoras, esta
+presentaba menores valores de log-verosimilitud, AIC y BIC, y un ajuste visual 
+razonable en los gráficos comparativos (QQ plot, P-P plot, densidad y CDF). 
+
+Sin embargo, los resultados de la prueba de Kolmogorov–Smirnov indican
+posibles disparidades con los modelos ajustados, lo que sugiere que los
+datos podrían no seguir una única distribución conocida. Esto puede deberse a:
+
+Datos que estén correlacionados, contengan subpoblaciones o similares
+Varias distribuciones combinadas
+Estén sesgados, mal registrados o con valores redondeados
+
+A pesar de estas limitaciones, el gran tamaño muestral aportaba una ventaja.
+En este contexto, la distribución Gamma puede ser utilizada como una aproximación
+razonable, pero es de considerar, que es una aproximación muy burda y poco
+confiable
